@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# Project runtime
+shared/
+data/
+*.sav
+*.nes
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code local
+CLAUDE.local.md
+
+# Tarball extraction artifacts
+{*/

@@ -1,0 +1,33 @@
+{
+  "emulator": {
+    "path": "fceux",
+    "rom_path": "",
+    "lua_script": "lua/main.lua",
+    "headless": false
+  },
+  "ipc": {
+    "shared_dir": "shared",
+    "state_file": "state.json",
+    "input_file": "input.json",
+    "screenshot_file": "screenshot.png",
+    "poll_interval_ms": 50,
+    "stale_threshold_ms": 200
+  },
+  "mcp_server": {
+    "host": "localhost",
+    "port": 3333,
+    "rate_limit_ms": 100,
+    "max_action_duration_frames": 120
+  },
+  "knowledge_base": {
+    "save_path": "data/knowledge_base.json",
+    "sessions_dir": "data/sessions"
+  },
+  "gameplay": {
+    "auto_checkpoint_on_new_map": true,
+    "auto_checkpoint_interval_minutes": 5,
+    "summarization_threshold_tool_calls": 50,
+    "screenshot_by_default": true,
+    "heal_threshold_hp_percent": 30
+  }
+}

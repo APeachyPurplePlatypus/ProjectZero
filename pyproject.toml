@@ -1,0 +1,29 @@
+[project]
+name = "earthbound-zero-ai"
+version = "0.1.0"
+description = "Claude plays EarthBound Zero via MCP server and FCEUX emulator bridge"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp",
+    "pydantic>=2.0",
+    "pillow>=10.0",
+    "aiofiles>=23.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

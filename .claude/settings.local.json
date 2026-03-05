@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tar -tzf /c/Users/david/Downloads/earthbound-zero-ai.tar.gz)",
+      "Bash(ls -la \"C:\\\\Users\\\\david\\\\ProjectZero\\\\project_begin\\\\{.claude\\\\commands,docs,src\")",
+      "WebFetch(domain:fceux.com)",
+      "Bash(xargs ls -lh)",
+      "Bash(find \"/c/Users/david/ProjectZero/project_begin\" -type f \\\\\\( -name \"*.py\" -o -name \"*.lua\" \\\\\\) -exec wc -l {} +)",
+      "WebFetch(domain:datacrystal.tcrf.net)"
+    ]
+  }
+}
