@@ -67,6 +67,72 @@ class GameState:
     menu_state: int = 0
     dialog_active: int = 0
 
+    # Party allies (Phase 5)
+    ana_hp: int = 0
+    ana_max_hp: int = 0
+    ana_pp: int = 0
+    ana_max_pp: int = 0
+    ana_level: int = 0
+    ana_status: int = 0
+
+    lloyd_hp: int = 0
+    lloyd_max_hp: int = 0
+    lloyd_pp: int = 0
+    lloyd_max_pp: int = 0
+    lloyd_level: int = 0
+    lloyd_status: int = 0
+
+    teddy_hp: int = 0
+    teddy_max_hp: int = 0
+    teddy_pp: int = 0
+    teddy_max_pp: int = 0
+    teddy_level: int = 0
+    teddy_status: int = 0
+
+    # Party composition slots (ally IDs; 0 = empty)
+    party_0: int = 0
+    party_1: int = 0
+    party_2: int = 0
+    party_3: int = 0
+
+    # Inventory — flat 32-slot array (4 characters x 8 slots)
+    inv_0: int = 0
+    inv_1: int = 0
+    inv_2: int = 0
+    inv_3: int = 0
+    inv_4: int = 0
+    inv_5: int = 0
+    inv_6: int = 0
+    inv_7: int = 0
+    inv_8: int = 0
+    inv_9: int = 0
+    inv_10: int = 0
+    inv_11: int = 0
+    inv_12: int = 0
+    inv_13: int = 0
+    inv_14: int = 0
+    inv_15: int = 0
+    inv_16: int = 0
+    inv_17: int = 0
+    inv_18: int = 0
+    inv_19: int = 0
+    inv_20: int = 0
+    inv_21: int = 0
+    inv_22: int = 0
+    inv_23: int = 0
+    inv_24: int = 0
+    inv_25: int = 0
+    inv_26: int = 0
+    inv_27: int = 0
+    inv_28: int = 0
+    inv_29: int = 0
+    inv_30: int = 0
+    inv_31: int = 0
+
+    # Economy / progress
+    money: int = 0
+    melodies: int = 0  # Bitfield: each bit = one melody collected
+
 
 # ---------------------------------------------------------------------------
 # EmulatorBridge
@@ -217,6 +283,66 @@ class EmulatorBridge:
             enemy_group_id=data.get("enemy_group_id", 0),
             menu_state=data.get("menu_state", 0),
             dialog_active=data.get("dialog_active", 0),
+            # Party allies
+            ana_hp=data.get("ana_hp", 0),
+            ana_max_hp=data.get("ana_max_hp", 0),
+            ana_pp=data.get("ana_pp", 0),
+            ana_max_pp=data.get("ana_max_pp", 0),
+            ana_level=data.get("ana_level", 0),
+            ana_status=data.get("ana_status", 0),
+            lloyd_hp=data.get("lloyd_hp", 0),
+            lloyd_max_hp=data.get("lloyd_max_hp", 0),
+            lloyd_pp=data.get("lloyd_pp", 0),
+            lloyd_max_pp=data.get("lloyd_max_pp", 0),
+            lloyd_level=data.get("lloyd_level", 0),
+            lloyd_status=data.get("lloyd_status", 0),
+            teddy_hp=data.get("teddy_hp", 0),
+            teddy_max_hp=data.get("teddy_max_hp", 0),
+            teddy_pp=data.get("teddy_pp", 0),
+            teddy_max_pp=data.get("teddy_max_pp", 0),
+            teddy_level=data.get("teddy_level", 0),
+            teddy_status=data.get("teddy_status", 0),
+            # Party composition
+            party_0=data.get("party_0", 0),
+            party_1=data.get("party_1", 0),
+            party_2=data.get("party_2", 0),
+            party_3=data.get("party_3", 0),
+            # Inventory
+            inv_0=data.get("inv_0", 0),
+            inv_1=data.get("inv_1", 0),
+            inv_2=data.get("inv_2", 0),
+            inv_3=data.get("inv_3", 0),
+            inv_4=data.get("inv_4", 0),
+            inv_5=data.get("inv_5", 0),
+            inv_6=data.get("inv_6", 0),
+            inv_7=data.get("inv_7", 0),
+            inv_8=data.get("inv_8", 0),
+            inv_9=data.get("inv_9", 0),
+            inv_10=data.get("inv_10", 0),
+            inv_11=data.get("inv_11", 0),
+            inv_12=data.get("inv_12", 0),
+            inv_13=data.get("inv_13", 0),
+            inv_14=data.get("inv_14", 0),
+            inv_15=data.get("inv_15", 0),
+            inv_16=data.get("inv_16", 0),
+            inv_17=data.get("inv_17", 0),
+            inv_18=data.get("inv_18", 0),
+            inv_19=data.get("inv_19", 0),
+            inv_20=data.get("inv_20", 0),
+            inv_21=data.get("inv_21", 0),
+            inv_22=data.get("inv_22", 0),
+            inv_23=data.get("inv_23", 0),
+            inv_24=data.get("inv_24", 0),
+            inv_25=data.get("inv_25", 0),
+            inv_26=data.get("inv_26", 0),
+            inv_27=data.get("inv_27", 0),
+            inv_28=data.get("inv_28", 0),
+            inv_29=data.get("inv_29", 0),
+            inv_30=data.get("inv_30", 0),
+            inv_31=data.get("inv_31", 0),
+            # Economy / progress
+            money=data.get("money", 0),
+            melodies=data.get("melodies", 0),
         )
 
     # -- Input Sending --------------------------------------------------------

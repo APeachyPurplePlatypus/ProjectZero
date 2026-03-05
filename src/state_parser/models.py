@@ -68,6 +68,8 @@ class FullGameState(BaseModel):
     battle_state: BattleState | None = None
     dialog_state: DialogState | None = None
     screenshot_base64: str | None = None
+    money: int = 0
+    melodies_collected: int = 0  # Count of melodies obtained (0-8)
 
 
 class ActionResult(BaseModel):
