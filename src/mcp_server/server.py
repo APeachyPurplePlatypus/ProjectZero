@@ -26,14 +26,20 @@ from src.bridge.emulator_bridge import (
     EmulatorBridge,
 )
 from src.knowledge_base.kb import KnowledgeBase
+from src.knowledge_base.session import SessionManager
 from src.mcp_server.validation import validate_action
 from src.state_parser.models import (
     ActionResult,
     FullGameState,
     KnowledgeBaseResult,
     MemoryValueResult,
+    ProgressSummaryResult,
     RestoreStateResult,
     SaveStateResult,
+    SessionListResult,
+    SessionRestoreResult,
+    SessionSaveResult,
+    SessionStatsResult,
 )
 from src.state_parser.parser import GameStateParser, detect_game_mode
 
@@ -82,12 +88,18 @@ async def app_lifespan(app: FastMCP):
     bridge = EmulatorBridge(config)
     parser = GameStateParser()
     kb = KnowledgeBase(config["knowledge_base"]["save_path"])
+    session_mgr = SessionManager(
+        sessions_dir=config["knowledge_base"]["sessions_dir"],
+        kb=kb,
+        summarization_threshold=config["gameplay"]["summarization_threshold_tool_calls"],
+    )
 
     ctx_data: dict[str, Any] = {
         "bridge": bridge,
         "parser": parser,
         "config": config,
         "kb": kb,
+        "session_mgr": session_mgr,
         "last_action_time": 0.0,
         "action_lock": asyncio.Lock(),
     }
@@ -134,6 +146,11 @@ async def _enforce_rate_limit(ctx: Context) -> None:
         lc["last_action_time"] = time.monotonic()
 
 
+def _track_call(ctx: Context) -> None:
+    """Increment the session tool call counter. Call at start of every tool handler."""
+    ctx.request_context.lifespan_context["session_mgr"].increment_tool_calls()
+
+
 def _build_full_state(
     bridge: EmulatorBridge,
     parser: GameStateParser,
@@ -160,6 +177,7 @@ async def get_game_state(
     include_screenshot: bool = True,
     ctx: Context = None,
 ) -> dict[str, Any]:
+    _track_call(ctx)
     bridge, parser, config = _deps(ctx)
     # Respect config default
     if not config["gameplay"].get("screenshot_by_default", True):
@@ -201,6 +219,7 @@ async def execute_action(
     include_screenshot: bool = True,
     ctx: Context = None,
 ) -> dict[str, Any]:
+    _track_call(ctx)
     bridge, parser, config = _deps(ctx)
 
     await _enforce_rate_limit(ctx)
@@ -298,6 +317,7 @@ def _dispatch_action(
     description="Creates a labeled emulator save state checkpoint for later restoration.",
 )
 async def create_save_state(label: str, ctx: Context = None) -> dict[str, Any]:
+    _track_call(ctx)
     bridge, parser, _ = _deps(ctx)
     try:
         state_id = bridge.create_save_state(label)
@@ -325,6 +345,7 @@ async def create_save_state(label: str, ctx: Context = None) -> dict[str, Any]:
     description="Restores the emulator to a previously created save state checkpoint.",
 )
 async def restore_save_state(save_state_id: str, ctx: Context = None) -> dict[str, Any]:
+    _track_call(ctx)
     bridge, parser, _ = _deps(ctx)
     try:
         bridge.restore_save_state(save_state_id)
@@ -353,6 +374,7 @@ async def get_memory_value(
     length: int = 1,
     ctx: Context = None,
 ) -> dict[str, Any]:
+    _track_call(ctx)
     bridge, _, _ = _deps(ctx)
     addr = address.lower()
     if not addr.startswith("0x"):
@@ -400,6 +422,7 @@ async def update_knowledge_base(
     value: str | None = None,
     ctx: Context = None,
 ) -> dict[str, Any]:
+    _track_call(ctx)
     lc = ctx.request_context.lifespan_context
     kb: KnowledgeBase = lc["kb"]
 
@@ -445,3 +468,185 @@ async def update_knowledge_base(
 
     except ValueError as e:
         return KnowledgeBaseResult(error=str(e)).model_dump(mode="json", exclude_none=True)
+
+
+# ---------------------------------------------------------------------------
+# Tool 7: get_session_stats
+# ---------------------------------------------------------------------------
+
+@mcp.tool(
+    name="get_session_stats",
+    description=(
+        "Returns session statistics: how many MCP tool calls have been made this conversation, "
+        "the summarization threshold, and whether Claude should write a progress summary. "
+        "Check this every ~10 actions. When should_summarize is true, call write_progress_summary."
+    ),
+)
+async def get_session_stats(ctx: Context = None) -> dict[str, Any]:
+    _track_call(ctx)
+    lc = ctx.request_context.lifespan_context
+    session_mgr: SessionManager = lc["session_mgr"]
+    stats = session_mgr.get_session_stats()
+    return SessionStatsResult(
+        tool_call_count=stats["tool_call_count"],
+        summarization_threshold=stats["summarization_threshold"],
+        should_summarize=stats["should_summarize"],
+    ).model_dump(mode="json")
+
+
+# ---------------------------------------------------------------------------
+# Tool 8: write_progress_summary
+# ---------------------------------------------------------------------------
+
+@mcp.tool(
+    name="write_progress_summary",
+    description=(
+        "Write a progress summary to disk for continuity across conversations. "
+        "Call this when get_session_stats says should_summarize is true. "
+        "Include: current location, objectives completed, current goal, party status, "
+        "notable discoveries. Retrieved via get_last_summary in future conversations."
+    ),
+)
+async def write_progress_summary(summary: str, ctx: Context = None) -> dict[str, Any]:
+    _track_call(ctx)
+    lc = ctx.request_context.lifespan_context
+    session_mgr: SessionManager = lc["session_mgr"]
+    session_mgr.write_progress_summary(summary)
+    return ProgressSummaryResult(
+        summary=summary,
+        message="Progress summary saved. Retrieve it with get_last_summary in future sessions.",
+    ).model_dump(mode="json", exclude_none=True)
+
+
+# ---------------------------------------------------------------------------
+# Tool 9: get_last_summary
+# ---------------------------------------------------------------------------
+
+@mcp.tool(
+    name="get_last_summary",
+    description=(
+        "Retrieve the most recent progress summary from a previous session. "
+        "Call this at the START of every new conversation to restore context. "
+        "Returns null summary if no summary has been written yet."
+    ),
+)
+async def get_last_summary(ctx: Context = None) -> dict[str, Any]:
+    _track_call(ctx)
+    lc = ctx.request_context.lifespan_context
+    session_mgr: SessionManager = lc["session_mgr"]
+    summary = session_mgr.get_last_summary()
+    if summary:
+        return ProgressSummaryResult(summary=summary).model_dump(mode="json", exclude_none=True)
+    return ProgressSummaryResult(
+        message="No previous progress summary found. This appears to be the first session.",
+    ).model_dump(mode="json", exclude_none=True)
+
+
+# ---------------------------------------------------------------------------
+# Tool 10: save_session
+# ---------------------------------------------------------------------------
+
+@mcp.tool(
+    name="save_session",
+    description=(
+        "Save a complete session bundle: emulator save state + knowledge base snapshot + "
+        "progress summary. Use before ending a long session or when instructed to save progress. "
+        "Restore later with restore_session. List saved sessions with list_sessions."
+    ),
+)
+async def save_session(name: str, ctx: Context = None) -> dict[str, Any]:
+    _track_call(ctx)
+    lc = ctx.request_context.lifespan_context
+    bridge: EmulatorBridge = lc["bridge"]
+    parser: GameStateParser = lc["parser"]
+    session_mgr: SessionManager = lc["session_mgr"]
+
+    # Try to create an emulator save state for this session
+    save_state_id: str | None = None
+    game_summary = "(emulator unavailable)"
+    try:
+        save_state_id = bridge.create_save_state(f"session_{name}")
+        state = _build_full_state(bridge, parser, include_screenshot=False)
+        game_summary = (
+            f"Ninten Lv{state.player.level} "
+            f"HP:{state.player.hp}/{state.player.max_hp} "
+            f"at {state.location.map_name} ({state.location.x},{state.location.y})"
+        )
+    except Exception as e:
+        logger.warning("Could not create emulator save state during save_session: %s", e)
+
+    session_data = session_mgr.save_session(
+        name=name,
+        save_state_id=save_state_id,
+        game_state_summary=game_summary,
+    )
+    return SessionSaveResult(
+        session_id=session_data.session_id,
+        timestamp=session_data.timestamp,
+        game_state_summary=session_data.game_state_summary,
+        tool_call_count=session_data.tool_call_count,
+    ).model_dump(mode="json")
+
+
+# ---------------------------------------------------------------------------
+# Tool 11: list_sessions
+# ---------------------------------------------------------------------------
+
+@mcp.tool(
+    name="list_sessions",
+    description="List all saved sessions with their metadata, sorted newest first.",
+)
+async def list_sessions(ctx: Context = None) -> dict[str, Any]:
+    _track_call(ctx)
+    lc = ctx.request_context.lifespan_context
+    session_mgr: SessionManager = lc["session_mgr"]
+    return SessionListResult(sessions=session_mgr.list_sessions()).model_dump(mode="json")
+
+
+# ---------------------------------------------------------------------------
+# Tool 12: restore_session
+# ---------------------------------------------------------------------------
+
+@mcp.tool(
+    name="restore_session",
+    description=(
+        "Restore a previously saved session: reloads the knowledge base snapshot and "
+        "emulator save state. Returns the session's progress summary for context. "
+        "Call list_sessions first to see available session IDs."
+    ),
+)
+async def restore_session(session_id: str, ctx: Context = None) -> dict[str, Any]:
+    _track_call(ctx)
+    lc = ctx.request_context.lifespan_context
+    bridge: EmulatorBridge = lc["bridge"]
+    session_mgr: SessionManager = lc["session_mgr"]
+
+    try:
+        session_data = session_mgr.restore_session(session_id)
+    except FileNotFoundError:
+        return SessionRestoreResult(
+            success=False,
+            session_id=session_id,
+            game_state_summary="",
+            error=f"Session '{session_id}' not found.",
+        ).model_dump(mode="json", exclude_none=True)
+
+    # Restore emulator save state if available
+    if session_data.save_state_id:
+        try:
+            bridge.restore_save_state(session_data.save_state_id)
+        except Exception as e:
+            return SessionRestoreResult(
+                success=False,
+                session_id=session_id,
+                game_state_summary=session_data.game_state_summary,
+                progress_summary=session_data.progress_summary or None,
+                error=f"KB restored but emulator restore failed: {e}",
+            ).model_dump(mode="json", exclude_none=True)
+
+    return SessionRestoreResult(
+        success=True,
+        session_id=session_id,
+        game_state_summary=session_data.game_state_summary,
+        progress_summary=session_data.progress_summary or None,
+    ).model_dump(mode="json", exclude_none=True)

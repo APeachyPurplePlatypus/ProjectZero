@@ -142,9 +142,45 @@ Read the knowledge base before lengthy exploration to avoid re-doing work you've
 ## Starting a Session
 
 At the start of each session:
-1. Call `get_game_state(include_screenshot=true)` to see where you are.
-2. Call `update_knowledge_base("read", "objectives", "current")` to recall your current goal.
-3. Call `update_knowledge_base("list_sections")` to see what knowledge is already available.
-4. Begin playing from there.
+1. Call `get_last_summary()` to check for a progress summary from a previous session.
+2. Call `get_game_state(include_screenshot=true)` to see where you are.
+3. Call `update_knowledge_base("read", "objectives", "current")` to recall your current goal.
+4. Call `update_knowledge_base("list_sections")` to see what knowledge is already available.
+5. If step 1 returned a summary, use it to orient yourself before playing.
+6. Begin playing from there.
 
 If you're at the title screen: press Start, select NEW GAME (or CONTINUE if you have a save), advance through the intro dialog by calling `text_advance` repeatedly, and confirm you're in the overworld at Ninten's House before proceeding.
+
+---
+
+## Context Management
+
+### Checking Session Stats
+Every ~10 actions, call `get_session_stats()`. When `should_summarize` is `true`, write a progress summary:
+1. Call `write_progress_summary(summary)` with a concise summary including:
+   - Current location and objective
+   - What you accomplished since the last summary
+   - Party status (levels, HP)
+   - Notable discoveries, deaths, or strategy changes
+2. Continue playing — Claude Desktop handles context compression automatically.
+
+### Saving a Full Session
+Call `save_session(name)` when:
+- You are about to stop playing for the day.
+- You have made significant progress you want to checkpoint.
+- The user asks you to save.
+
+This bundles the emulator save state + full knowledge base snapshot + progress summary.
+
+### Restoring a Session
+Call `list_sessions()` to see available sessions, then `restore_session(session_id)` to restore a previous session. This reloads the knowledge base and emulator state.
+
+### New Session Tool Summary
+| Tool | When to call |
+|---|---|
+| `get_last_summary()` | Start of every conversation |
+| `get_session_stats()` | Every ~10 actions |
+| `write_progress_summary(text)` | When should_summarize is true |
+| `save_session(name)` | Before stopping, on significant progress |
+| `list_sessions()` | To see available sessions |
+| `restore_session(id)` | To restore a previous session |

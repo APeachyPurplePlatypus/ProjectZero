@@ -104,3 +104,38 @@ class KnowledgeBaseResult(BaseModel):
     value: str | None = None
     sections: dict[str, int] | None = None
     error: str | None = None
+
+
+class SessionStatsResult(BaseModel):
+    """Return value of get_session_stats tool."""
+    tool_call_count: int
+    summarization_threshold: int
+    should_summarize: bool
+
+
+class ProgressSummaryResult(BaseModel):
+    """Return value of write_progress_summary and get_last_summary tools."""
+    summary: str | None = None
+    message: str | None = None
+
+
+class SessionSaveResult(BaseModel):
+    """Return value of save_session tool."""
+    session_id: str
+    timestamp: str
+    game_state_summary: str
+    tool_call_count: int
+
+
+class SessionListResult(BaseModel):
+    """Return value of list_sessions tool."""
+    sessions: list[dict]
+
+
+class SessionRestoreResult(BaseModel):
+    """Return value of restore_session tool."""
+    success: bool
+    session_id: str
+    game_state_summary: str
+    progress_summary: str | None = None
+    error: str | None = None
