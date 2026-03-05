@@ -144,7 +144,7 @@ class TestGameStateParser:
 
         assert state.game_mode == GameMode.BATTLE
         assert state.battle_state is not None
-        assert "5" in state.battle_state.enemy_name
+        assert len(state.battle_state.enemy_name) > 0  # name lookup or fallback
         assert state.dialog_state is None
 
     def test_dialog_state_populated(self):

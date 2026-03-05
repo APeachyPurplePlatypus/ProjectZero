@@ -85,6 +85,20 @@ function M.process_input()
     if active_command == nil then
         local cmd = read_input_file()
         if cmd then
+            -- Handle instant savestate commands (no multi-frame hold)
+            if cmd.command == "savestate_save" then
+                local slot = cmd.slot or 1
+                savestate.save(slot)
+                write_done(cmd.frame_id or 0)
+                return
+            end
+            if cmd.command == "savestate_load" then
+                local slot = cmd.slot or 1
+                savestate.load(slot)
+                write_done(cmd.frame_id or 0)
+                return
+            end
+
             active_command = cmd
             remaining_frames = cmd.duration_frames or 2
             current_frame_id = cmd.frame_id or 0

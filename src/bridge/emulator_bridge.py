@@ -92,6 +92,9 @@ class EmulatorBridge:
         self._process: subprocess.Popen[bytes] | None = None
         self._last_frame: int = -1
         self._frame_id_counter: int = 0
+        self._save_slots: dict[str, int] = {}  # state_id -> slot number
+        self._next_slot: int = 1
+        self._max_slots: int = 10
 
     def _load_config(self) -> dict[str, Any]:
         config_path = Path(__file__).resolve().parent.parent.parent / "config.json"
@@ -306,18 +309,64 @@ class EmulatorBridge:
 
         raise BridgeTimeoutError("Screenshot file not created.")
 
-    # -- Save States (stubs for Phase 1) --------------------------------------
+    # -- Save States ----------------------------------------------------------
 
     def create_save_state(self, label: str) -> str:
-        """Create an emulator save state. Returns a state ID."""
+        """Create an emulator save state via FCEUX Lua savestate API.
+
+        Returns a state_id string that can be passed to restore_save_state().
+        Cycles through slots 1-10, overwriting the oldest when full.
+        """
+        if not self.is_alive():
+            raise EmulatorCrashedError("FCEUX is not running.")
+
+        slot = self._allocate_slot()
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         state_id = f"ss_{timestamp}_{label}"
-        # TODO: implement via Lua savestate API in Phase 3
+
+        self._frame_id_counter += 1
+        cmd = {
+            "command": "savestate_save",
+            "slot": slot,
+            "frame_id": self._frame_id_counter,
+        }
+        self._remove_safe(self._done_file)
+        self._write_json_atomic(self._input_file, cmd)
+        self._wait_for_file_gone(self._input_file, timeout=2.0)
+        self._wait_for_done(self._frame_id_counter, timeout=3.0)
+
+        self._save_slots[state_id] = slot
         return state_id
 
     def restore_save_state(self, state_id: str) -> None:
-        """Restore a previously created save state."""
-        # TODO: implement via Lua savestate API in Phase 3
+        """Restore a previously created save state via FCEUX Lua savestate API."""
+        if not self.is_alive():
+            raise EmulatorCrashedError("FCEUX is not running.")
+
+        slot = self._save_slots.get(state_id)
+        if slot is None:
+            raise ValueError(f"Unknown save state ID: '{state_id}'")
+
+        self._frame_id_counter += 1
+        cmd = {
+            "command": "savestate_load",
+            "slot": slot,
+            "frame_id": self._frame_id_counter,
+        }
+        self._remove_safe(self._done_file)
+        self._write_json_atomic(self._input_file, cmd)
+        self._wait_for_file_gone(self._input_file, timeout=2.0)
+        self._wait_for_done(self._frame_id_counter, timeout=3.0)
+
+    def _allocate_slot(self) -> int:
+        """Allocate next save state slot (1-10), cycling to reuse oldest."""
+        slot = self._next_slot
+        self._next_slot = (self._next_slot % self._max_slots) + 1
+        return slot
+
+    def list_save_states(self) -> dict[str, int]:
+        """Return current state_id -> slot mapping (for debugging)."""
+        return dict(self._save_slots)
 
     # -- File Utilities -------------------------------------------------------
 

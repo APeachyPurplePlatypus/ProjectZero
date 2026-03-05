@@ -25,6 +25,7 @@ from src.bridge.emulator_bridge import (
     StaleStateError,
     EmulatorBridge,
 )
+from src.knowledge_base.kb import KnowledgeBase
 from src.mcp_server.validation import validate_action
 from src.state_parser.models import (
     ActionResult,
@@ -80,11 +81,13 @@ async def app_lifespan(app: FastMCP):
     config = _load_config()
     bridge = EmulatorBridge(config)
     parser = GameStateParser()
+    kb = KnowledgeBase(config["knowledge_base"]["save_path"])
 
     ctx_data: dict[str, Any] = {
         "bridge": bridge,
         "parser": parser,
         "config": config,
+        "kb": kb,
         "last_action_time": 0.0,
         "action_lock": asyncio.Lock(),
     }
@@ -385,9 +388,9 @@ async def get_memory_value(
 @mcp.tool(
     name="update_knowledge_base",
     description=(
-        "Read, write, or delete entries in Claude's persistent knowledge base. "
+        "Read, write, delete, or list entries in Claude's persistent knowledge base. "
         "Sections: map_data, npc_notes, battle_strategies, inventory, objectives, death_log. "
-        "(Not yet implemented — coming in Phase 4.)"
+        "Values are natural language strings. Keys should be snake_case descriptors."
     ),
 )
 async def update_knowledge_base(
@@ -397,6 +400,48 @@ async def update_knowledge_base(
     value: str | None = None,
     ctx: Context = None,
 ) -> dict[str, Any]:
-    return KnowledgeBaseResult(
-        error="Knowledge base not yet implemented. Coming in Phase 4."
-    ).model_dump(mode="json", exclude_none=True)
+    lc = ctx.request_context.lifespan_context
+    kb: KnowledgeBase = lc["kb"]
+
+    try:
+        if operation == "list_sections":
+            return KnowledgeBaseResult(
+                sections=kb.list_sections()
+            ).model_dump(mode="json", exclude_none=True)
+
+        if operation == "read":
+            if not section or not key:
+                return KnowledgeBaseResult(
+                    error="'read' requires section and key."
+                ).model_dump(mode="json", exclude_none=True)
+            val = kb.read(section, key)
+            return KnowledgeBaseResult(
+                section=section, key=key, value=val
+            ).model_dump(mode="json", exclude_none=True)
+
+        if operation == "write":
+            if not section or not key or value is None:
+                return KnowledgeBaseResult(
+                    error="'write' requires section, key, and value."
+                ).model_dump(mode="json", exclude_none=True)
+            kb.write(section, key, value)
+            return KnowledgeBaseResult(
+                section=section, key=key, value=value
+            ).model_dump(mode="json", exclude_none=True)
+
+        if operation == "delete":
+            if not section or not key:
+                return KnowledgeBaseResult(
+                    error="'delete' requires section and key."
+                ).model_dump(mode="json", exclude_none=True)
+            kb.delete(section, key)
+            return KnowledgeBaseResult(
+                section=section, key=key
+            ).model_dump(mode="json", exclude_none=True)
+
+        return KnowledgeBaseResult(
+            error=f"Unknown operation '{operation}'. Use: read, write, delete, list_sections."
+        ).model_dump(mode="json", exclude_none=True)
+
+    except ValueError as e:
+        return KnowledgeBaseResult(error=str(e)).model_dump(mode="json", exclude_none=True)
