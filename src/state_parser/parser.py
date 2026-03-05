@@ -10,6 +10,7 @@ Handles:
 from __future__ import annotations
 
 from src.bridge.emulator_bridge import GameState as RawGameState
+from src.state_parser.enemy_names import get_enemy_name
 from src.state_parser.map_names import get_map_name
 from src.state_parser.models import (
     BattleState,
@@ -119,8 +120,7 @@ class GameStateParser:
 
     def _build_battle_state(self, raw: RawGameState) -> BattleState:
         """Build battle sub-state. Enemy details are limited in Phase 2."""
-        # enemy_group_id is available; enemy name lookup table is Phase 3
-        enemy_label = f"Enemy Group #{raw.enemy_group_id}" if raw.enemy_group_id else "Unknown Enemy"
+        enemy_label = get_enemy_name(raw.enemy_group_id) if raw.enemy_group_id else "Unknown Enemy"
         return BattleState(
             enemy_name=enemy_label,
             enemy_hp=None,       # Combat struct offsets not yet mapped
