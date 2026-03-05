@@ -25,6 +25,7 @@ from src.bridge.emulator_bridge import (
     StaleStateError,
     EmulatorBridge,
 )
+from src.bridge.auto_checkpoint import AutoCheckpoint
 from src.knowledge_base.kb import KnowledgeBase
 from src.knowledge_base.session import SessionManager
 from src.mcp_server.validation import validate_action
@@ -93,6 +94,11 @@ async def app_lifespan(app: FastMCP):
         kb=kb,
         summarization_threshold=config["gameplay"]["summarization_threshold_tool_calls"],
     )
+    auto_cp = AutoCheckpoint(
+        bridge=bridge,
+        interval_minutes=config["gameplay"]["auto_checkpoint_interval_minutes"],
+        enabled=config["gameplay"]["auto_checkpoint_on_new_map"],
+    )
 
     ctx_data: dict[str, Any] = {
         "bridge": bridge,
@@ -100,6 +106,7 @@ async def app_lifespan(app: FastMCP):
         "config": config,
         "kb": kb,
         "session_mgr": session_mgr,
+        "auto_cp": auto_cp,
         "last_action_time": 0.0,
         "action_lock": asyncio.Lock(),
     }
@@ -178,10 +185,7 @@ async def get_game_state(
     ctx: Context = None,
 ) -> dict[str, Any]:
     _track_call(ctx)
-    bridge, parser, config = _deps(ctx)
-    # Respect config default
-    if not config["gameplay"].get("screenshot_by_default", True):
-        include_screenshot = False
+    bridge, parser, _ = _deps(ctx)
     try:
         state = _build_full_state(bridge, parser, include_screenshot)
         return state.model_dump(mode="json", exclude_none=True)
@@ -220,6 +224,7 @@ async def execute_action(
     ctx: Context = None,
 ) -> dict[str, Any]:
     _track_call(ctx)
+    lc = ctx.request_context.lifespan_context
     bridge, parser, config = _deps(ctx)
 
     await _enforce_rate_limit(ctx)
@@ -259,11 +264,22 @@ async def execute_action(
         result_state = _build_full_state(bridge, parser, include_screenshot)
     except (EmulatorCrashedError, StaleStateError, BridgeTimeoutError) as e:
         return {
-            "success": True,
+            "success": False,
             "action_performed": description,
             "error": f"Action executed but state read failed: {e}",
             "game_state": None,
         }
+
+    # Auto-checkpoint: check if we should save (new map, healed full, periodic timer)
+    auto_cp: AutoCheckpoint = lc["auto_cp"]
+    auto_cp.check_and_save(
+        map_id=result_state.location.map_id,
+        hp=result_state.player.hp,
+        max_hp=result_state.player.max_hp,
+    )
+    # Restore on game over (HP=0)
+    if result_state.player.hp == 0:
+        auto_cp.check_game_over(0)
 
     return ActionResult(
         success=True,
