@@ -7,7 +7,7 @@ requiring a live emulator.
 The mock context pattern:
     ctx.request_context.lifespan_context == a dict with the same keys
     that app_lifespan populates (bridge, parser, config, kb, session_mgr,
-    auto_cp, last_action_time, action_lock).
+    auto_cp, performance, last_action_time, action_lock).
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ from src.bridge.emulator_bridge import (
 from src.knowledge_base.kb import KnowledgeBase
 from src.knowledge_base.session import SessionManager
 from src.mcp_server import server as srv
+from src.mcp_server.performance import PerformanceTracker
 from src.state_parser.parser import GameStateParser
 
 
@@ -100,6 +101,7 @@ def make_ctx(tmp_path, state: GameState = OVERWORLD_STATE) -> MagicMock:
         "kb": kb,
         "session_mgr": session_mgr,
         "auto_cp": auto_cp,
+        "performance": PerformanceTracker(),
         "last_action_time": 0.0,
         "action_lock": asyncio.Lock(),
     }
@@ -338,3 +340,86 @@ class TestSessionTools:
         result = await srv.restore_session(session_id="nonexistent_abc", ctx=ctx)
         assert result["success"] is False
         assert "not found" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: Extended state fields
+# ---------------------------------------------------------------------------
+
+PHASE5_STATE = GameState(
+    frame=300,
+    map_id=1,
+    player_x=5,
+    player_y=10,
+    ninten_hp=50,
+    ninten_max_hp=68,
+    ninten_level=3,
+    combat_active=0,
+    # Party member present: Ana (party_0=1, max_hp>0)
+    party_0=1,
+    ana_hp=30,
+    ana_max_hp=40,
+    ana_pp=10,
+    ana_max_pp=20,
+    ana_level=3,
+    ana_status=0,
+    # Inventory: Bread in slot 0
+    inv_0=1,
+    # Economy
+    money=250,
+    melodies=0b00000011,  # 2 melodies
+)
+
+
+class TestPhase5GameState:
+    @pytest.mark.asyncio
+    async def test_get_game_state_includes_money(self, tmp_path):
+        ctx = make_ctx(tmp_path, PHASE5_STATE)
+        result = await srv.get_game_state(include_screenshot=False, ctx=ctx)
+        assert "money" in result
+        assert result["money"] == 250
+
+    @pytest.mark.asyncio
+    async def test_get_game_state_includes_melodies(self, tmp_path):
+        ctx = make_ctx(tmp_path, PHASE5_STATE)
+        result = await srv.get_game_state(include_screenshot=False, ctx=ctx)
+        assert "melodies_collected" in result
+        assert result["melodies_collected"] == 2
+
+    @pytest.mark.asyncio
+    async def test_get_game_state_includes_party(self, tmp_path):
+        ctx = make_ctx(tmp_path, PHASE5_STATE)
+        result = await srv.get_game_state(include_screenshot=False, ctx=ctx)
+        assert "party" in result
+        assert len(result["party"]) == 1
+        assert result["party"][0]["name"] == "Ana"
+
+    @pytest.mark.asyncio
+    async def test_get_game_state_includes_inventory(self, tmp_path):
+        ctx = make_ctx(tmp_path, PHASE5_STATE)
+        result = await srv.get_game_state(include_screenshot=False, ctx=ctx)
+        assert "inventory" in result
+        assert "Bread" in result["inventory"]
+
+
+class TestPerformanceDashboard:
+    @pytest.mark.asyncio
+    async def test_get_performance_dashboard_shape(self, tmp_path):
+        ctx = make_ctx(tmp_path)
+        result = await srv.get_performance_dashboard(ctx=ctx)
+        assert "battles_won" in result
+        assert "battles_lost" in result
+        assert "battles_fled" in result
+        assert "total_battles" in result
+        assert "win_rate" in result
+        assert "deaths" in result
+        assert "distance_traveled_tiles" in result
+        assert "session_elapsed_minutes" in result
+
+    @pytest.mark.asyncio
+    async def test_initial_dashboard_is_zeroed(self, tmp_path):
+        ctx = make_ctx(tmp_path)
+        result = await srv.get_performance_dashboard(ctx=ctx)
+        assert result["battles_won"] == 0
+        assert result["deaths"] == 0
+        assert result["win_rate"] == 0.0

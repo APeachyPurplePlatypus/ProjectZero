@@ -184,3 +184,100 @@ Call `list_sessions()` to see available sessions, then `restore_session(session_
 | `save_session(name)` | Before stopping, on significant progress |
 | `list_sessions()` | To see available sessions |
 | `restore_session(id)` | To restore a previous session |
+| `get_performance_dashboard()` | Every ~20 actions |
+
+---
+
+## Party Management (Phase 5)
+
+Ninten can recruit up to 3 companions: **Ana**, **Lloyd**, and **Teddy** (each joins at specific story points).
+
+`get_game_state` returns a `party` list with each ally's name, level, HP, PP, and status when they are active. An empty `party` list means Ninten is traveling alone.
+
+### Managing Allies
+- **Monitor ally HP**: Check all party members after each battle. Heal any ally below 30% HP.
+- **Ana** uses PSI (her PP is valuable — don't waste it on weak enemies).
+- **Lloyd** attacks with weapons and rockets.
+- **Teddy** is a physical powerhouse but has no PSI.
+- **Unconscious allies** (HP = 0) count as dead — restore them with a Revival Herb or at a hospital.
+
+### Equipment
+- Each character has an equipped weapon, coin, ring, and pendant.
+- Buy better equipment in towns as you level up.
+- Write equipment decisions to `update_knowledge_base("write", "inventory", "<char>_equipment", "...")`.
+
+---
+
+## PSI System
+
+PSI (Psychic Powers) are magical abilities that cost PP. Ninten and Ana have PSI; Lloyd and Teddy do not.
+
+### When to Use PSI vs BASH
+- **Default to BASH**: No PP cost, reliable. Use BASH on most enemies.
+- **Use PSI offensively** when: BASH is ineffective (enemy resists), you need to finish an enemy quickly, or the enemy uses status ailments.
+- **Use PSI defensively (PK Healing)** when: HP is low and no healing items are available.
+- **Conserve PP** for boss fights and emergencies. Rest at a hotel to recover PP.
+
+### PSI Strategy
+- In `battle_strategies` KB, note which enemies are weak to which PSI types.
+- Never run Ninten's PP to zero unless it's an emergency — you may need healing PSI mid-dungeon.
+
+---
+
+## Inventory Management
+
+`get_game_state` returns a flat `inventory` list of all items held by all party members. Items are listed by display name.
+
+### Item Priorities
+- **Healing items** (Bread, Hamburger, Steak): Use in battle via GOODS menu or between battles.
+- **Status cure items** (Antidote, etc.): Use immediately when a party member is poisoned.
+- **Key items** (Franklin Badge, Crystal, etc.): Never use or discard — required for story progression.
+- **Revival items** (if available): Save for unconscious allies.
+
+### Buying and Selling
+- Buy healing items whenever your supply is low (keep 3+ healing items in stock).
+- Sell old equipment when you buy upgrades.
+- Write to `update_knowledge_base("write", "inventory", "current_stock", "...")` after major purchases.
+
+### Money
+`get_game_state` includes `money` (cash on hand in dollars). Spend wisely — hospitals and hotels cost money.
+- Priority spending: healing items > equipment upgrades > hotels.
+
+---
+
+## Death Recovery
+
+When Ninten dies (HP = 0), the emulator auto-restores the most recent auto-checkpoint. You will then be at your last safe position.
+
+**After a death:**
+1. Write to `death_log`: note where you died, what killed you, what HP you had, and what strategy you were using.
+2. Re-read `battle_strategies` for the enemy or area that killed you.
+3. Adapt: buy more healing items, grind a level, try a different approach.
+4. If you die in the same spot twice, write an explicit "avoid this approach" note to `battle_strategies`.
+
+---
+
+## Story Objectives and Melodies
+
+Ninten's ultimate goal is to collect **8 melodies** from across the world. `get_game_state` includes `melodies_collected` (0–8).
+
+**Current story guidance:**
+- Start in **Podunk** — talk to all NPCs, check your home.
+- Progress to **Merrysville** (east of Podunk) for story events.
+- Each area has a melody to find — check `objectives` in the KB for current goal.
+
+**Tracking objectives:**
+- After each story milestone, update `update_knowledge_base("write", "objectives", "current", "...")`.
+- Log completed objectives so you don't revisit them.
+
+---
+
+## Performance Monitoring
+
+Call `get_performance_dashboard()` every ~20 actions. Review:
+- **win_rate**: Target > 70%. If below 50%, adapt strategy (grind levels, buy items, change approach).
+- **deaths**: More than 3 deaths in one area = danger zone. Avoid or prepare better.
+- **distance_traveled_tiles**: Tracks how much ground you've covered.
+- **session_elapsed_minutes**: Useful for pacing (town visits, save intervals).
+
+Write noteworthy strategy adaptations to `battle_strategies` in the knowledge base.

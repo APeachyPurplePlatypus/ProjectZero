@@ -28,6 +28,7 @@ from src.bridge.emulator_bridge import (
 from src.bridge.auto_checkpoint import AutoCheckpoint
 from src.knowledge_base.kb import KnowledgeBase
 from src.knowledge_base.session import SessionManager
+from src.mcp_server.performance import PerformanceTracker
 from src.mcp_server.validation import validate_action
 from src.state_parser.models import (
     ActionResult,
@@ -51,6 +52,7 @@ logger = logging.getLogger(__name__)
 # Maps lowercase hex address → (RawGameState field name, byte length)
 # ---------------------------------------------------------------------------
 KNOWN_ADDRESSES: dict[str, tuple[str, int]] = {
+    # Overworld / combat (internal RAM)
     "0x000c": ("player_direction", 1),
     "0x0015": ("map_id", 1),
     "0x0018": ("player_x", 2),
@@ -58,6 +60,7 @@ KNOWN_ADDRESSES: dict[str, tuple[str, int]] = {
     "0x00a0": ("movement_state", 1),
     "0x0047": ("combat_active", 1),
     "0x0048": ("enemy_group_id", 1),
+    # Ninten (SRAM Last Save block)
     "0x7441": ("ninten_status", 1),
     "0x7443": ("ninten_max_hp", 2),
     "0x7445": ("ninten_max_pp", 2),
@@ -65,6 +68,24 @@ KNOWN_ADDRESSES: dict[str, tuple[str, int]] = {
     "0x7451": ("ninten_exp", 3),
     "0x7454": ("ninten_hp", 2),
     "0x7456": ("ninten_pp", 2),
+    # Party allies (Phase 5)
+    "0x7481": ("ana_status", 1),
+    "0x7483": ("ana_max_hp", 2),
+    "0x7485": ("ana_max_pp", 2),
+    "0x7490": ("ana_level", 1),
+    "0x7494": ("ana_hp", 2),
+    "0x7496": ("ana_pp", 2),
+    "0x74c1": ("lloyd_status", 1),
+    "0x74c3": ("lloyd_max_hp", 2),
+    "0x74d0": ("lloyd_level", 1),
+    "0x74d4": ("lloyd_hp", 2),
+    "0x7501": ("teddy_status", 1),
+    "0x7503": ("teddy_max_hp", 2),
+    "0x7510": ("teddy_level", 1),
+    "0x7514": ("teddy_hp", 2),
+    # Economy / progress (Phase 5)
+    "0x7410": ("money", 2),
+    "0x761e": ("melodies", 1),
 }
 
 
@@ -99,6 +120,7 @@ async def app_lifespan(app: FastMCP):
         interval_minutes=config["gameplay"]["auto_checkpoint_interval_minutes"],
         enabled=config["gameplay"]["auto_checkpoint_on_new_map"],
     )
+    performance = PerformanceTracker()
 
     ctx_data: dict[str, Any] = {
         "bridge": bridge,
@@ -107,6 +129,7 @@ async def app_lifespan(app: FastMCP):
         "kb": kb,
         "session_mgr": session_mgr,
         "auto_cp": auto_cp,
+        "performance": performance,
         "last_action_time": 0.0,
         "action_lock": asyncio.Lock(),
     }
@@ -280,6 +303,21 @@ async def execute_action(
     # Restore on game over (HP=0)
     if result_state.player.hp == 0:
         auto_cp.check_game_over(0)
+        lc["performance"].record_death()
+
+    # Performance tracking: position + battle mode transitions
+    tracker: PerformanceTracker = lc["performance"]
+    tracker.update_position(result_state.location.x, result_state.location.y)
+    new_mode = result_state.game_mode.value
+    transition = tracker.update_game_mode(new_mode)
+    if transition == "ended":
+        # Battle just ended — determine outcome from the action that ended it
+        if action_type == "menu_navigate" and menu_path and "RUN" in (menu_path or []):
+            tracker.record_battle_result("fled")
+        elif result_state.player.hp > 0:
+            tracker.record_battle_result("won")
+        else:
+            tracker.record_battle_result("lost")
 
     return ActionResult(
         success=True,
@@ -666,3 +704,23 @@ async def restore_session(session_id: str, ctx: Context = None) -> dict[str, Any
         game_state_summary=session_data.game_state_summary,
         progress_summary=session_data.progress_summary or None,
     ).model_dump(mode="json", exclude_none=True)
+
+
+# ---------------------------------------------------------------------------
+# Tool 13: get_performance_dashboard
+# ---------------------------------------------------------------------------
+
+@mcp.tool(
+    name="get_performance_dashboard",
+    description=(
+        "Returns gameplay performance metrics for the current session: "
+        "battle win/loss/fled counts, win rate, deaths, tiles traveled, and elapsed time. "
+        "Check periodically (every ~20 actions) to monitor progress. "
+        "If win rate drops below 50%, consider updating battle_strategies in the knowledge base."
+    ),
+)
+async def get_performance_dashboard(ctx: Context = None) -> dict[str, Any]:
+    _track_call(ctx)
+    lc = ctx.request_context.lifespan_context
+    tracker: PerformanceTracker = lc["performance"]
+    return tracker.get_dashboard()

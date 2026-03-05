@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from src.bridge.emulator_bridge import GameState as RawGameState
 from src.state_parser.enemy_names import get_enemy_name
+from src.state_parser.item_names import get_item_name
 from src.state_parser.map_names import get_map_name
 from src.state_parser.models import (
     BattleState,
@@ -110,13 +111,66 @@ class GameStateParser:
             frame=raw.frame,
             game_mode=game_mode,
             player=player,
-            party=[],        # Phase 3: Ana, Lloyd, Teddy
+            party=self._build_party(raw),
             location=location,
-            inventory=[],    # Phase 4: item slot reading
+            inventory=self._build_inventory(raw),
             battle_state=battle_state,
             dialog_state=dialog_state,
             screenshot_base64=screenshot_b64,
+            money=raw.money,
+            melodies_collected=bin(raw.melodies).count("1"),
         )
+
+    # Ally ID -> (name, raw stat field prefix) mapping.
+    # IDs are from the party_0..party_3 slots in state.json.
+    # 0 = empty; any non-zero value indicates the ally is active.
+    _ALLY_INFO: dict[int, tuple[str, str]] = {
+        1: ("Ana",   "ana"),
+        2: ("Lloyd", "lloyd"),
+        3: ("Teddy", "teddy"),
+    }
+
+    def _build_party(self, raw: RawGameState) -> list[PlayerState]:
+        """Build the active party list from raw state ally slots.
+
+        Reads party_0..party_3 for non-zero ally IDs, then constructs a
+        PlayerState for each using the corresponding stat fields.
+        Allies with HP=0 (not yet recruited) are omitted.
+        """
+        party: list[PlayerState] = []
+        for slot in (raw.party_0, raw.party_1, raw.party_2, raw.party_3):
+            info = self._ALLY_INFO.get(slot)
+            if info is None:
+                continue
+            name, prefix = info
+            hp     = getattr(raw, f"{prefix}_hp")
+            max_hp = getattr(raw, f"{prefix}_max_hp")
+            # Skip allies that have never been recruited (all stats zero)
+            if max_hp == 0:
+                continue
+            party.append(PlayerState(
+                name=name,
+                level=max(getattr(raw, f"{prefix}_level"), 1),
+                hp=hp,
+                max_hp=max_hp,
+                pp=getattr(raw, f"{prefix}_pp"),
+                max_pp=getattr(raw, f"{prefix}_max_pp"),
+                status=decode_status(getattr(raw, f"{prefix}_status")),
+            ))
+        return party
+
+    def _build_inventory(self, raw: RawGameState) -> list[str]:
+        """Build a flat inventory list from all 32 item slots.
+
+        Slots 0-7: Ninten, 8-15: Ana, 16-23: Lloyd, 24-31: Teddy.
+        Empty slots (item_id == 0) are excluded from the result.
+        """
+        items: list[str] = []
+        for i in range(32):
+            item_id = getattr(raw, f"inv_{i}")
+            if item_id != 0:
+                items.append(get_item_name(item_id))
+        return items
 
     def _build_battle_state(self, raw: RawGameState) -> BattleState:
         """Build battle sub-state. Enemy details are limited in Phase 2."""
