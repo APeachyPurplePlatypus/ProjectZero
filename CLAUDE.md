@@ -32,8 +32,22 @@ Claude <-> MCP Server (Python) <-> Emulator Bridge (Python/Lua) <-> FCEUX (NES e
 ## Commands
 - `python scripts/setup.py` — Install dependencies and verify FCEUX
 - `python scripts/test_bridge.py` — Test emulator bridge IPC round-trip
-- `python -m src.mcp_server.server` — Start the MCP server
-- `fceux --loadlua lua/main.lua <rom_path>` — Launch emulator with scripts
+- `python scripts/start_game.py <rom_path>` — Launch FCEUX + Lua bridge (run before Claude Desktop)
+- `python -m src.mcp_server` — Start the MCP server manually (Claude Desktop does this automatically)
+
+## Playing with Claude Desktop
+
+1. **Start the game** (Terminal):
+   ```
+   python scripts/start_game.py <rom_path>
+   ```
+   Or set `emulator.rom_path` in `config.json` and run without arguments.
+
+2. **Open Claude Desktop** — the `earthbound-zero` MCP server connects automatically.
+
+3. **Start playing** — paste `docs/system_prompt.md` as your first message, then let Claude play.
+
+The MCP server is registered in `claude_desktop_config.json` pointing to `scripts/mcp_entry.py`.
 
 ## Code Style
 - Python: Use type hints everywhere. Async where needed (MCP SDK). `ruff` for linting.
