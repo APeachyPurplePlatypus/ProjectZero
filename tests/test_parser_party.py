@@ -183,3 +183,89 @@ class TestMoneyAndMelodies:
         raw = make_raw(melodies=0)
         state = PARSER.build_state(raw)
         assert state.melodies_collected == 0
+
+
+# ---------------------------------------------------------------------------
+# PSI ability parsing
+# ---------------------------------------------------------------------------
+
+class TestBuildPSI:
+    def test_ninten_no_psi_returns_empty(self):
+        raw = make_raw()  # All psi_* default to 0
+        state = PARSER.build_state(raw)
+        assert state.player.learned_psi == []
+
+    def test_ninten_has_psi_abilities(self):
+        raw = make_raw(psi_0=11, psi_1=16)  # Healing a, PSI Shield a
+        state = PARSER.build_state(raw)
+        assert len(state.player.learned_psi) == 2
+        assert "Healing a" in state.player.learned_psi
+        assert "PSI Shield a" in state.player.learned_psi
+
+    def test_ninten_psi_skips_empty_slots(self):
+        raw = make_raw(psi_0=11, psi_1=0, psi_2=23)  # Healing a, empty, Telepathy
+        state = PARSER.build_state(raw)
+        assert len(state.player.learned_psi) == 2
+
+    def test_ana_psi_in_party(self):
+        raw = make_raw(
+            party_0=1,
+            ana_hp=30, ana_max_hp=40, ana_pp=20, ana_max_pp=35,
+            ana_level=4, ana_status=0,
+            psi_8=1, psi_9=3,  # Ana: PK Fire a, PK Freeze a
+        )
+        state = PARSER.build_state(raw)
+        assert len(state.party) == 1
+        assert len(state.party[0].learned_psi) == 2
+        assert "PK Fire a" in state.party[0].learned_psi
+
+    def test_lloyd_has_no_psi(self):
+        raw = make_raw(
+            party_0=2,
+            lloyd_hp=25, lloyd_max_hp=35, lloyd_pp=0, lloyd_max_pp=0,
+            lloyd_level=3, lloyd_status=0,
+        )
+        state = PARSER.build_state(raw)
+        assert state.party[0].learned_psi == []
+
+    def test_battle_state_includes_available_psi(self):
+        raw = make_raw(
+            combat_active=1, enemy_group_id=1,
+            psi_0=11,  # Ninten: Healing a
+            party_0=1,
+            ana_hp=30, ana_max_hp=40, ana_pp=20, ana_max_pp=35,
+            ana_level=4, ana_status=0,
+            psi_8=1,  # Ana: PK Fire a
+        )
+        state = PARSER.build_state(raw)
+        assert state.battle_state is not None
+        assert len(state.battle_state.available_psi) == 2
+        assert "Healing a" in state.battle_state.available_psi
+        assert "PK Fire a" in state.battle_state.available_psi
+
+    def test_battle_state_psi_without_ana(self):
+        raw = make_raw(
+            combat_active=1, enemy_group_id=1,
+            psi_0=11,  # Ninten: Healing a only
+        )
+        state = PARSER.build_state(raw)
+        assert state.battle_state is not None
+        assert len(state.battle_state.available_psi) == 1
+
+
+# ---------------------------------------------------------------------------
+# Current objective hint
+# ---------------------------------------------------------------------------
+
+class TestCurrentObjective:
+    def test_objective_included_in_state(self):
+        raw = make_raw(melodies=0, map_id=0)
+        state = PARSER.build_state(raw)
+        assert len(state.current_objective) > 0
+
+    def test_objective_changes_with_melodies(self):
+        raw_0 = make_raw(melodies=0, map_id=2)
+        raw_3 = make_raw(melodies=0b00000111, map_id=2)
+        state_0 = PARSER.build_state(raw_0)
+        state_3 = PARSER.build_state(raw_3)
+        assert state_0.current_objective != state_3.current_objective

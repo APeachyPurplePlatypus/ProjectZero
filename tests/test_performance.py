@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from src.mcp_server.performance import PerformanceTracker
+from src.mcp_server.performance import DeathContext, PerformanceTracker
 
 
 class TestInitialState:
@@ -145,3 +145,103 @@ class TestDashboard:
         time.sleep(0.01)
         d = tracker.get_dashboard()
         assert d["session_elapsed_minutes"] >= 0.0
+
+    def test_dashboard_no_death_analysis_when_no_deaths(self):
+        tracker = PerformanceTracker()
+        d = tracker.get_dashboard()
+        assert "death_analysis" not in d
+
+    def test_dashboard_includes_death_analysis_when_deaths(self):
+        tracker = PerformanceTracker()
+        ctx = DeathContext(
+            enemy_group_id=1, enemy_name="Lamp",
+            map_id=2, map_name="Podunk",
+            ninten_hp_at_death=0, ninten_max_hp=68,
+            party_hp=[],
+        )
+        tracker.record_death_with_context(ctx)
+        d = tracker.get_dashboard()
+        assert "death_analysis" in d
+
+
+# ---------------------------------------------------------------------------
+# Death context and analysis
+# ---------------------------------------------------------------------------
+
+def _make_death(
+    enemy_name: str = "Lamp",
+    map_name: str = "Podunk",
+    hp_at_death: int = 0,
+    max_hp: int = 68,
+) -> DeathContext:
+    return DeathContext(
+        enemy_group_id=1,
+        enemy_name=enemy_name,
+        map_id=2,
+        map_name=map_name,
+        ninten_hp_at_death=hp_at_death,
+        ninten_max_hp=max_hp,
+        party_hp=[],
+    )
+
+
+class TestDeathWithContext:
+    def test_record_increments_deaths(self):
+        tracker = PerformanceTracker()
+        tracker.record_death_with_context(_make_death())
+        assert tracker.deaths == 1
+
+    def test_context_stored(self):
+        tracker = PerformanceTracker()
+        tracker.record_death_with_context(_make_death())
+        assert len(tracker._death_contexts) == 1
+
+    def test_multiple_contexts_stored(self):
+        tracker = PerformanceTracker()
+        tracker.record_death_with_context(_make_death(enemy_name="Lamp"))
+        tracker.record_death_with_context(_make_death(enemy_name="Crow"))
+        assert tracker.deaths == 2
+        assert len(tracker._death_contexts) == 2
+
+
+class TestDeathAnalysis:
+    def test_no_contexts_returns_total(self):
+        tracker = PerformanceTracker()
+        analysis = tracker.get_death_analysis()
+        assert analysis["total_deaths"] == 0
+
+    def test_single_death_analysis(self):
+        tracker = PerformanceTracker()
+        tracker.record_death_with_context(_make_death())
+        analysis = tracker.get_death_analysis()
+        assert analysis["total_deaths"] == 1
+        assert "Lamp" in analysis["deaths_by_enemy"]
+        assert "Podunk" in analysis["deaths_by_location"]
+        assert analysis["deadliest_enemy"] == "Lamp"
+
+    def test_repeated_enemy_suggests_strategy(self):
+        tracker = PerformanceTracker()
+        for _ in range(3):
+            tracker.record_death_with_context(_make_death(enemy_name="Gang Zombie"))
+        analysis = tracker.get_death_analysis()
+        assert any("Gang Zombie" in s for s in analysis["suggestions"])
+
+    def test_repeated_area_suggests_grinding(self):
+        tracker = PerformanceTracker()
+        for _ in range(2):
+            tracker.record_death_with_context(_make_death(map_name="Spookane"))
+        analysis = tracker.get_death_analysis()
+        assert any("Spookane" in s for s in analysis["suggestions"])
+
+    def test_low_hp_death_suggests_healing(self):
+        tracker = PerformanceTracker()
+        tracker.record_death_with_context(_make_death(hp_at_death=5, max_hp=68))
+        analysis = tracker.get_death_analysis()
+        assert any("30%" in s or "Heal" in s for s in analysis["suggestions"])
+
+    def test_recent_deaths_limited_to_five(self):
+        tracker = PerformanceTracker()
+        for i in range(8):
+            tracker.record_death_with_context(_make_death(enemy_name=f"Enemy{i}"))
+        analysis = tracker.get_death_analysis()
+        assert len(analysis["recent_deaths"]) == 5

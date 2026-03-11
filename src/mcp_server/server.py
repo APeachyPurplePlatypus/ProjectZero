@@ -28,8 +28,10 @@ from src.bridge.emulator_bridge import (
 from src.bridge.auto_checkpoint import AutoCheckpoint
 from src.knowledge_base.kb import KnowledgeBase
 from src.knowledge_base.session import SessionManager
-from src.mcp_server.performance import PerformanceTracker
+from src.mcp_server.performance import DeathContext, PerformanceTracker
+from src.mcp_server.screenshot_policy import ScreenshotPolicy
 from src.mcp_server.validation import validate_action
+from src.state_parser.enemy_names import get_enemy_name
 from src.state_parser.models import (
     ActionResult,
     FullGameState,
@@ -121,6 +123,10 @@ async def app_lifespan(app: FastMCP):
         enabled=config["gameplay"]["auto_checkpoint_on_new_map"],
     )
     performance = PerformanceTracker()
+    screenshot_policy = ScreenshotPolicy(
+        enabled=config["gameplay"].get("smart_screenshot_policy", False),
+        force_interval=config["gameplay"].get("screenshot_policy_interval", 20),
+    )
 
     ctx_data: dict[str, Any] = {
         "bridge": bridge,
@@ -130,6 +136,7 @@ async def app_lifespan(app: FastMCP):
         "session_mgr": session_mgr,
         "auto_cp": auto_cp,
         "performance": performance,
+        "screenshot_policy": screenshot_policy,
         "last_action_time": 0.0,
         "action_lock": asyncio.Lock(),
     }
@@ -185,9 +192,20 @@ def _build_full_state(
     bridge: EmulatorBridge,
     parser: GameStateParser,
     include_screenshot: bool,
+    policy: ScreenshotPolicy | None = None,
 ) -> FullGameState:
     raw: RawGameState = bridge.get_state()
-    screenshot_b64 = bridge.capture_screenshot() if include_screenshot else None
+    if policy is not None:
+        # True → policy decides (caller_explicit=None); False → explicit skip
+        caller_explicit = False if not include_screenshot else None
+        actual_screenshot = policy.should_include(
+            caller_explicit=caller_explicit,
+            game_mode=detect_game_mode(raw).value,
+            map_id=raw.map_id,
+        )
+    else:
+        actual_screenshot = include_screenshot
+    screenshot_b64 = bridge.capture_screenshot() if actual_screenshot else None
     return parser.build_state(raw, screenshot_b64)
 
 
@@ -209,8 +227,10 @@ async def get_game_state(
 ) -> dict[str, Any]:
     _track_call(ctx)
     bridge, parser, _ = _deps(ctx)
+    lc = ctx.request_context.lifespan_context
+    policy: ScreenshotPolicy = lc["screenshot_policy"]
     try:
-        state = _build_full_state(bridge, parser, include_screenshot)
+        state = _build_full_state(bridge, parser, include_screenshot, policy=policy)
         return state.model_dump(mode="json", exclude_none=True)
     except EmulatorCrashedError as e:
         return {"error": f"Emulator not running: {e}"}
@@ -283,8 +303,9 @@ async def execute_action(
         return {"success": False, "error": str(e), "game_state": None}
 
     # Read result state
+    policy: ScreenshotPolicy = lc["screenshot_policy"]
     try:
-        result_state = _build_full_state(bridge, parser, include_screenshot)
+        result_state = _build_full_state(bridge, parser, include_screenshot, policy=policy)
     except (EmulatorCrashedError, StaleStateError, BridgeTimeoutError) as e:
         return {
             "success": False,
@@ -300,13 +321,29 @@ async def execute_action(
         hp=result_state.player.hp,
         max_hp=result_state.player.max_hp,
     )
-    # Restore on game over (HP=0)
+
+    # Performance tracking
+    tracker: PerformanceTracker = lc["performance"]
+
+    # Death detection with context for post-mortem analysis
     if result_state.player.hp == 0:
         auto_cp.check_game_over(0)
-        lc["performance"].record_death()
-
-    # Performance tracking: position + battle mode transitions
-    tracker: PerformanceTracker = lc["performance"]
+        death_ctx = DeathContext(
+            enemy_group_id=raw.enemy_group_id,
+            enemy_name=get_enemy_name(raw.enemy_group_id) if raw.enemy_group_id else "Unknown",
+            map_id=result_state.location.map_id,
+            map_name=result_state.location.map_name,
+            ninten_hp_at_death=result_state.player.hp,
+            ninten_max_hp=result_state.player.max_hp,
+            party_hp=[(m.name, m.hp, m.max_hp) for m in result_state.party],
+        )
+        tracker.record_death_with_context(death_ctx)
+        kb: KnowledgeBase = lc["kb"]
+        death_desc = (
+            f"Died to {death_ctx.enemy_name} in {death_ctx.map_name} "
+            f"(HP: {death_ctx.ninten_hp_at_death}/{death_ctx.ninten_max_hp})"
+        )
+        kb.write("death_log", f"death_{tracker.deaths}", death_desc)
     tracker.update_position(result_state.location.x, result_state.location.y)
     new_mode = result_state.game_mode.value
     transition = tracker.update_game_mode(new_mode)

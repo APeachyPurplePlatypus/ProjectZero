@@ -129,11 +129,12 @@ Save at telephones in towns. Auto-save checkpoints are created by this system (y
 
 ## Token Economy
 
-Minimize unnecessary screenshot usage to preserve context:
-- **Routine movement**: no screenshot needed.
-- **Combat**: no screenshot until the battle ends or you need to read text.
-- **New area, NPC dialog, unfamiliar UI**: take a screenshot.
-- **When stuck**: take a screenshot and reason from the visual.
+The smart screenshot policy automatically manages screenshot inclusion to optimize token costs:
+- **Automatic screenshots**: first action, mode transitions (entering/leaving battle), new map entry, and periodically (every ~20 actions).
+- **Skipped**: routine same-map, same-mode actions where a screenshot adds no value.
+- **Override**: pass `include_screenshot=false` to explicitly skip a screenshot.
+
+You don't need to manually manage screenshot decisions for most actions — the policy handles it. Focus on gameplay.
 
 Read the knowledge base before lengthy exploration to avoid re-doing work you've already completed in a prior session.
 
@@ -143,7 +144,7 @@ Read the knowledge base before lengthy exploration to avoid re-doing work you've
 
 At the start of each session:
 1. Call `get_last_summary()` to check for a progress summary from a previous session.
-2. Call `get_game_state(include_screenshot=true)` to see where you are.
+2. Call `get_game_state(include_screenshot=true)` to see where you are. The response includes `current_objective` — a contextual hint for what to do next based on your melody count and location.
 3. Call `update_knowledge_base("read", "objectives", "current")` to recall your current goal.
 4. Call `update_knowledge_base("list_sections")` to see what knowledge is already available.
 5. If step 1 returned a summary, use it to orient yourself before playing.
@@ -218,6 +219,9 @@ PSI (Psychic Powers) are magical abilities that cost PP. Ninten and Ana have PSI
 - **Use PSI defensively (PK Healing)** when: HP is low and no healing items are available.
 - **Conserve PP** for boss fights and emergencies. Rest at a hotel to recover PP.
 
+### PSI in Battle State
+During battle, `battle_state.available_psi` lists all PSI abilities available to the party (Ninten + Ana if present). Each character's `learned_psi` field shows their individual abilities. Use this to plan which PSI to cast.
+
 ### PSI Strategy
 - In `battle_strategies` KB, note which enemies are weak to which PSI types.
 - Never run Ninten's PP to zero unless it's an emergency — you may need healing PSI mid-dungeon.
@@ -247,13 +251,16 @@ PSI (Psychic Powers) are magical abilities that cost PP. Ninten and Ana have PSI
 
 ## Death Recovery
 
-When Ninten dies (HP = 0), the emulator auto-restores the most recent auto-checkpoint. You will then be at your last safe position.
+When Ninten dies (HP = 0), the system automatically:
+- Restores the most recent auto-checkpoint
+- Records a `DeathContext` with enemy name, map, and party HP
+- Writes a death entry to the KB `death_log` section
 
 **After a death:**
-1. Write to `death_log`: note where you died, what killed you, what HP you had, and what strategy you were using.
+1. Check `get_performance_dashboard()` — the `death_analysis` section shows your deadliest enemies, deadliest areas, and auto-generated suggestions.
 2. Re-read `battle_strategies` for the enemy or area that killed you.
 3. Adapt: buy more healing items, grind a level, try a different approach.
-4. If you die in the same spot twice, write an explicit "avoid this approach" note to `battle_strategies`.
+4. If you die to the same enemy 2+ times, the dashboard will suggest updating `battle_strategies` with a counter-strategy.
 
 ---
 

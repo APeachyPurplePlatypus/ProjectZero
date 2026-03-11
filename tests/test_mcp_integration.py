@@ -27,6 +27,7 @@ from src.knowledge_base.kb import KnowledgeBase
 from src.knowledge_base.session import SessionManager
 from src.mcp_server import server as srv
 from src.mcp_server.performance import PerformanceTracker
+from src.mcp_server.screenshot_policy import ScreenshotPolicy
 from src.state_parser.parser import GameStateParser
 
 
@@ -102,6 +103,7 @@ def make_ctx(tmp_path, state: GameState = OVERWORLD_STATE) -> MagicMock:
         "session_mgr": session_mgr,
         "auto_cp": auto_cp,
         "performance": PerformanceTracker(),
+        "screenshot_policy": ScreenshotPolicy(enabled=False),
         "last_action_time": 0.0,
         "action_lock": asyncio.Lock(),
     }
