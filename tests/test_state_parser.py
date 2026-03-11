@@ -192,3 +192,49 @@ class TestGameStateParser:
         data = state.model_dump(mode="json", exclude_none=True)
         assert data["game_mode"] == "overworld"
         assert data["player"]["name"] == "Ninten"
+
+
+# ---------------------------------------------------------------------------
+# Parser edge cases (Bug 1 regression + boundary conditions)
+# ---------------------------------------------------------------------------
+
+class TestParserEdgeCases:
+    parser = GameStateParser()
+
+    def test_level_255_clamped_to_99(self):
+        raw = make_raw(ninten_level=255)
+        state = self.parser.build_state(raw)
+        assert state.player.level == 99
+
+    def test_level_100_clamped_to_99(self):
+        raw = make_raw(ninten_level=100)
+        state = self.parser.build_state(raw)
+        assert state.player.level == 99
+
+    def test_ally_level_overflow_clamped(self):
+        raw = make_raw(party_0=1, ana_max_hp=35, ana_hp=28, ana_level=200)
+        state = self.parser.build_state(raw)
+        assert len(state.party) == 1
+        assert state.party[0].level == 99
+
+    def test_money_field_parsed(self):
+        raw = make_raw(money=1234)
+        state = self.parser.build_state(raw)
+        assert state.money == 1234
+
+    def test_melody_single_bits(self):
+        """Each individual melody bit maps to popcount=1."""
+        for bit in range(8):
+            raw = make_raw(melodies=(1 << bit))
+            state = self.parser.build_state(raw)
+            assert state.melodies_collected == 1
+
+    def test_melody_alternating_bits(self):
+        raw = make_raw(melodies=0b10101010)
+        state = self.parser.build_state(raw)
+        assert state.melodies_collected == 4
+
+    def test_experience_max_value(self):
+        raw = make_raw(ninten_exp=16_777_215)
+        state = self.parser.build_state(raw)
+        assert state.player.experience == 16_777_215

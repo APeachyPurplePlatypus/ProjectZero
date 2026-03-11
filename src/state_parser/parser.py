@@ -90,7 +90,7 @@ class GameStateParser:
 
         player = PlayerState(
             name="Ninten",
-            level=max(raw.ninten_level, 1),  # level 0 means game not started
+            level=min(max(raw.ninten_level, 1), 99),  # clamp to valid range
             hp=raw.ninten_hp,
             max_hp=raw.ninten_max_hp,
             pp=raw.ninten_pp,
@@ -176,7 +176,7 @@ class GameStateParser:
                 continue
             party.append(PlayerState(
                 name=name,
-                level=max(getattr(raw, f"{prefix}_level"), 1),
+                level=min(max(getattr(raw, f"{prefix}_level"), 1), 99),
                 hp=hp,
                 max_hp=max_hp,
                 pp=getattr(raw, f"{prefix}_pp"),

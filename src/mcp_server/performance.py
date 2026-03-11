@@ -39,8 +39,15 @@ class PerformanceTracker:
     _last_y: int | None = field(default=None, repr=False)
     _last_game_mode: str = field(default="overworld", repr=False)
     _death_contexts: list[DeathContext] = field(default_factory=list, repr=False)
+    _last_hp: int | None = field(default=None, repr=False)
 
     # -- Public API -----------------------------------------------------------
+
+    def should_record_death(self, current_hp: int) -> bool:
+        """Return True only on transition from hp>0 to hp==0 (prevents double-counting)."""
+        was_alive = self._last_hp is None or self._last_hp > 0
+        self._last_hp = current_hp
+        return current_hp == 0 and was_alive
 
     def record_battle_result(self, outcome: str) -> None:
         """Record a battle result.

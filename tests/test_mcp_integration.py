@@ -425,3 +425,103 @@ class TestPerformanceDashboard:
         assert result["battles_won"] == 0
         assert result["deaths"] == 0
         assert result["win_rate"] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Screenshot policy integration
+# ---------------------------------------------------------------------------
+
+class TestScreenshotPolicyIntegration:
+    @pytest.mark.asyncio
+    async def test_enabled_policy_first_action_includes_screenshot(self, tmp_path):
+        bridge = make_mock_bridge(OVERWORLD_STATE)
+        bridge.capture_screenshot.return_value = "base64png"
+        ctx = MagicMock()
+        lc = make_ctx(tmp_path).request_context.lifespan_context
+        lc["bridge"] = bridge
+        lc["screenshot_policy"] = ScreenshotPolicy(enabled=True)
+        ctx.request_context.lifespan_context = lc
+        result = await srv.get_game_state(include_screenshot=True, ctx=ctx)
+        bridge.capture_screenshot.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_enabled_policy_routine_skips_screenshot(self, tmp_path):
+        bridge = make_mock_bridge(OVERWORLD_STATE)
+        bridge.capture_screenshot.return_value = "base64png"
+        ctx = MagicMock()
+        lc = make_ctx(tmp_path).request_context.lifespan_context
+        lc["bridge"] = bridge
+        lc["screenshot_policy"] = ScreenshotPolicy(enabled=True)
+        ctx.request_context.lifespan_context = lc
+        await srv.get_game_state(include_screenshot=True, ctx=ctx)
+        bridge.capture_screenshot.reset_mock()
+        await srv.get_game_state(include_screenshot=True, ctx=ctx)
+        bridge.capture_screenshot.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_enabled_policy_includes_on_mode_transition(self, tmp_path):
+        bridge = make_mock_bridge(OVERWORLD_STATE)
+        bridge.capture_screenshot.return_value = "base64png"
+        ctx = MagicMock()
+        lc = make_ctx(tmp_path).request_context.lifespan_context
+        lc["bridge"] = bridge
+        lc["screenshot_policy"] = ScreenshotPolicy(enabled=True)
+        ctx.request_context.lifespan_context = lc
+        # First call in overworld
+        await srv.get_game_state(include_screenshot=True, ctx=ctx)
+        bridge.capture_screenshot.reset_mock()
+        # Switch to battle
+        bridge.get_state.return_value = BATTLE_STATE
+        await srv.get_game_state(include_screenshot=True, ctx=ctx)
+        bridge.capture_screenshot.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Death recovery integration
+# ---------------------------------------------------------------------------
+
+DEAD_STATE = GameState(
+    frame=300, map_id=2, player_x=10, player_y=20,
+    ninten_hp=0, ninten_max_hp=68, ninten_level=5,
+    combat_active=0, enemy_group_id=5,
+)
+
+
+class TestDeathRecoveryIntegration:
+    @pytest.mark.asyncio
+    async def test_death_writes_to_kb(self, tmp_path):
+        ctx = make_ctx(tmp_path, OVERWORLD_STATE)
+        lc = ctx.request_context.lifespan_context
+        bridge = lc["bridge"]
+        # First call with alive state (sets _last_hp)
+        await srv.execute_action("button", button="A", ctx=ctx)
+        # Now return dead state
+        bridge.get_state.return_value = DEAD_STATE
+        await srv.execute_action("button", button="A", ctx=ctx)
+        kb = lc["kb"]
+        entries = kb.list_sections()
+        assert entries.get("death_log", 0) > 0
+
+    @pytest.mark.asyncio
+    async def test_death_creates_death_context(self, tmp_path):
+        ctx = make_ctx(tmp_path, OVERWORLD_STATE)
+        lc = ctx.request_context.lifespan_context
+        bridge = lc["bridge"]
+        await srv.execute_action("button", button="A", ctx=ctx)
+        bridge.get_state.return_value = DEAD_STATE
+        await srv.execute_action("button", button="A", ctx=ctx)
+        tracker = lc["performance"]
+        assert tracker.deaths == 1
+        assert len(tracker._death_contexts) == 1
+
+    @pytest.mark.asyncio
+    async def test_repeated_death_not_double_counted(self, tmp_path):
+        ctx = make_ctx(tmp_path, OVERWORLD_STATE)
+        lc = ctx.request_context.lifespan_context
+        bridge = lc["bridge"]
+        await srv.execute_action("button", button="A", ctx=ctx)
+        bridge.get_state.return_value = DEAD_STATE
+        await srv.execute_action("button", button="A", ctx=ctx)
+        await srv.execute_action("button", button="A", ctx=ctx)
+        tracker = lc["performance"]
+        assert tracker.deaths == 1  # Only counted once
