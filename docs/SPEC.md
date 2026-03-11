@@ -168,16 +168,27 @@ Persistent memory system so Claude can play extended sessions.
 ### Goal
 Claude plays for 30+ minutes, handling full game mechanics.
 
-### Tasks
-1. Multi-party management (recruit companions, manage equipment)
-2. PSI (magic) system usage in battles
-3. Inventory management (buy/sell/use items)
-4. Navigation toward story objectives
-5. Death recovery with strategy adaptation
-6. Performance dashboard (win rate, decisions/min, distance traveled)
-7. Cost optimization (skip screenshots for routine actions)
+### Tasks (Items 1–7 implemented, Item 8 is testing/validation)
+
+1. **Multi-party management** — `src/state_parser/parser.py` builds `party` list from SRAM ally slots; `FullGameState.party` returns each ally's name, level, HP, PP, status, and learned PSI. Equipment tracking via inventory.
+
+2. **PSI system usage in battles** — `src/state_parser/psi_names.py` maps ~28 PSI ability IDs to names, PP costs, and types (offense/defense/healing/assist). Lua reads 8 PSI slots per character (Ninten + Ana). `PlayerState.learned_psi` lists each character's known PSI; `BattleState.available_psi` aggregates all party PSI for battle decisions.
+
+3. **Inventory management** — `src/state_parser/parser.py` reads 32 item slots (8 per character) from SRAM. `FullGameState.inventory` returns item display names via `item_names.py`. Money tracked in `FullGameState.money`.
+
+4. **Navigation toward story objectives** — `src/state_parser/story_objectives.py` provides contextual hints based on melody count (0–8) and current map ID. `FullGameState.current_objective` gives Claude a one-line hint for what to do next. Map-specific overrides provide location-aware guidance.
+
+5. **Death recovery with strategy adaptation** — `DeathContext` dataclass captures enemy name, map name, HP at death, and party HP. `PerformanceTracker.record_death_with_context()` stores context; `get_death_analysis()` identifies deadliest enemies/areas and generates suggestions (repeated enemy → update strategy, low HP deaths → heal more aggressively). Deaths auto-logged to KB `death_log` section.
+
+6. **Performance dashboard** — `PerformanceTracker` in `src/mcp_server/performance.py` tracks battle wins/losses/fled, deaths, Manhattan distance traveled, and session elapsed time. `get_performance_dashboard` MCP tool returns all metrics including death analysis when deaths have context.
+
+7. **Cost optimization (screenshot policy)** — `ScreenshotPolicy` in `src/mcp_server/screenshot_policy.py` intelligently skips screenshots for routine same-map/same-mode actions. Includes screenshots on first action, mode transitions, new map entry, and periodically (every N actions). Explicit `include_screenshot=false` always skips. Configured via `config.json` gameplay settings.
+
+8. **Testing & validation** — Comprehensive unit test suite covering all Phase 5 features. Target: 250+ tests across PSI names, story objectives, party/inventory parsing, performance tracking, death analysis, screenshot policy, and MCP integration.
 
 ### Success Criteria
 - 30-minute autonomous sessions without crashes
 - Reaches first major story milestone (Podunk → Merrysville progression)
 - Random encounter win rate > 80%
+- 250+ unit tests passing
+- Death analysis produces actionable strategy suggestions

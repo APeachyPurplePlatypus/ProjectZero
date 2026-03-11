@@ -87,6 +87,16 @@ local function read_inventory(base)
     return slots
 end
 
+-- Read 8 learned PSI ability IDs starting at base+$30.
+-- Slots are 1-byte PSI IDs; 0 = unlearned.
+local function read_psi(base)
+    local slots = {}
+    for i = 0, 7 do
+        slots[i] = memory.readbyte(base + 0x30 + i)
+    end
+    return slots
+end
+
 -- Force an export on the next call (used for screenshot sync)
 M.force_next = false
 
@@ -116,6 +126,10 @@ function M.export_state()
     local ana_inv   = read_inventory(ADDR_ANA_BASE)
     local lloyd_inv = read_inventory(ADDR_LLOYD_BASE)
     local teddy_inv = read_inventory(ADDR_TEDDY_BASE)
+
+    -- PSI abilities (8 slots per character; only Ninten and Ana have PSI)
+    local ninten_psi = read_psi(ADDR_NINTEN_BASE)
+    local ana_psi    = read_psi(ADDR_ANA_BASE)
 
     local state = {
         frame           = frame,
@@ -175,6 +189,16 @@ function M.export_state()
         inv_26 = teddy_inv[2],  inv_27 = teddy_inv[3],
         inv_28 = teddy_inv[4],  inv_29 = teddy_inv[5],
         inv_30 = teddy_inv[6],  inv_31 = teddy_inv[7],
+
+        -- PSI abilities (Ninten psi_0..7, Ana psi_8..15)
+        psi_0  = ninten_psi[0], psi_1  = ninten_psi[1],
+        psi_2  = ninten_psi[2], psi_3  = ninten_psi[3],
+        psi_4  = ninten_psi[4], psi_5  = ninten_psi[5],
+        psi_6  = ninten_psi[6], psi_7  = ninten_psi[7],
+        psi_8  = ana_psi[0],    psi_9  = ana_psi[1],
+        psi_10 = ana_psi[2],    psi_11 = ana_psi[3],
+        psi_12 = ana_psi[4],    psi_13 = ana_psi[5],
+        psi_14 = ana_psi[6],    psi_15 = ana_psi[7],
 
         -- Party composition (ally IDs; 0 = empty slot)
         party_0 = memory.readbyte(ADDR_PARTY_SLOTS),

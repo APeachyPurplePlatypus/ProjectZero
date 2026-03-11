@@ -30,6 +30,7 @@ class PlayerState(BaseModel):
     max_pp: int = Field(ge=0)
     experience: int = Field(ge=0, default=0)
     status: str = "normal"  # One of: normal, cold, poisoned, puzzled, confused, asleep, paralyzed, stone, unconscious
+    learned_psi: list[str] = Field(default_factory=list)
 
 
 class Location(BaseModel):
@@ -49,6 +50,7 @@ class BattleState(BaseModel):
         default_factory=lambda: ["BASH", "PSI", "GOODS", "RUN"]
     )
     menu_cursor: str = "BASH"
+    available_psi: list[str] = Field(default_factory=list)
 
 
 class DialogState(BaseModel):
@@ -70,6 +72,7 @@ class FullGameState(BaseModel):
     screenshot_base64: str | None = None
     money: int = 0
     melodies_collected: int = 0  # Count of melodies obtained (0-8)
+    current_objective: str = ""  # Auto-generated hint based on story progress
 
 
 class ActionResult(BaseModel):

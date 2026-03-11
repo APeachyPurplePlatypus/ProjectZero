@@ -28,6 +28,8 @@
     "auto_checkpoint_interval_minutes": 5,
     "summarization_threshold_tool_calls": 50,
     "screenshot_by_default": true,
-    "heal_threshold_hp_percent": 30
+    "heal_threshold_hp_percent": 30,
+    "smart_screenshot_policy": true,
+    "screenshot_policy_interval": 20
   }
 }

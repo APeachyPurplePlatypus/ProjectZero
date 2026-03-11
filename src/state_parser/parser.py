@@ -13,6 +13,8 @@ from src.bridge.emulator_bridge import GameState as RawGameState
 from src.state_parser.enemy_names import get_enemy_name
 from src.state_parser.item_names import get_item_name
 from src.state_parser.map_names import get_map_name
+from src.state_parser.psi_names import get_psi_name
+from src.state_parser.story_objectives import get_current_objective
 from src.state_parser.models import (
     BattleState,
     DialogState,
@@ -95,6 +97,7 @@ class GameStateParser:
             max_pp=raw.ninten_max_pp,
             experience=raw.ninten_exp,
             status=decode_status(raw.ninten_status),
+            learned_psi=self._build_psi(raw, "ninten"),
         )
 
         location = Location(
@@ -107,6 +110,8 @@ class GameStateParser:
         battle_state = self._build_battle_state(raw) if game_mode == GameMode.BATTLE else None
         dialog_state = self._build_dialog_state() if game_mode == GameMode.DIALOG else None
 
+        melodies_count = bin(raw.melodies).count("1")
+
         return FullGameState(
             frame=raw.frame,
             game_mode=game_mode,
@@ -118,7 +123,8 @@ class GameStateParser:
             dialog_state=dialog_state,
             screenshot_base64=screenshot_b64,
             money=raw.money,
-            melodies_collected=bin(raw.melodies).count("1"),
+            melodies_collected=melodies_count,
+            current_objective=get_current_objective(melodies_count, raw.map_id),
         )
 
     # Ally ID -> (name, raw stat field prefix) mapping.
@@ -129,6 +135,26 @@ class GameStateParser:
         2: ("Lloyd", "lloyd"),
         3: ("Teddy", "teddy"),
     }
+
+    # PSI slot offset: "ninten" -> psi_0..7, "ana" -> psi_8..15
+    _PSI_OFFSETS: dict[str, int] = {"ninten": 0, "ana": 8}
+
+    def _build_psi(self, raw: RawGameState, character: str) -> list[str]:
+        """Build list of learned PSI ability names for a character.
+
+        Args:
+            raw: Raw game state.
+            character: "ninten" or "ana" (Lloyd/Teddy have no PSI).
+        """
+        offset = self._PSI_OFFSETS.get(character)
+        if offset is None:
+            return []
+        abilities: list[str] = []
+        for i in range(8):
+            psi_id = getattr(raw, f"psi_{offset + i}")
+            if psi_id != 0:
+                abilities.append(get_psi_name(psi_id))
+        return abilities
 
     def _build_party(self, raw: RawGameState) -> list[PlayerState]:
         """Build the active party list from raw state ally slots.
@@ -156,6 +182,7 @@ class GameStateParser:
                 pp=getattr(raw, f"{prefix}_pp"),
                 max_pp=getattr(raw, f"{prefix}_max_pp"),
                 status=decode_status(getattr(raw, f"{prefix}_status")),
+                learned_psi=self._build_psi(raw, prefix),
             ))
         return party
 
@@ -175,12 +202,19 @@ class GameStateParser:
     def _build_battle_state(self, raw: RawGameState) -> BattleState:
         """Build battle sub-state. Enemy details are limited in Phase 2."""
         enemy_label = get_enemy_name(raw.enemy_group_id) if raw.enemy_group_id else "Unknown Enemy"
+        # Collect PSI from Ninten + Ana (if in party)
+        all_psi = list(self._build_psi(raw, "ninten"))
+        for slot in (raw.party_0, raw.party_1, raw.party_2, raw.party_3):
+            if slot == 1:  # Ana's ally ID
+                all_psi.extend(self._build_psi(raw, "ana"))
+                break
         return BattleState(
             enemy_name=enemy_label,
             enemy_hp=None,       # Combat struct offsets not yet mapped
             turn=0,              # Turn counter address TBD
             available_actions=["BASH", "PSI", "GOODS", "RUN"],
             menu_cursor="BASH",
+            available_psi=all_psi,
         )
 
     def _build_dialog_state(self) -> DialogState:

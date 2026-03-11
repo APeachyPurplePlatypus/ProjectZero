@@ -129,6 +129,24 @@ class GameState:
     inv_30: int = 0
     inv_31: int = 0
 
+    # PSI abilities — flat 16-slot array (Ninten x 8 + Ana x 8)
+    psi_0: int = 0
+    psi_1: int = 0
+    psi_2: int = 0
+    psi_3: int = 0
+    psi_4: int = 0
+    psi_5: int = 0
+    psi_6: int = 0
+    psi_7: int = 0
+    psi_8: int = 0
+    psi_9: int = 0
+    psi_10: int = 0
+    psi_11: int = 0
+    psi_12: int = 0
+    psi_13: int = 0
+    psi_14: int = 0
+    psi_15: int = 0
+
     # Economy / progress
     money: int = 0
     melodies: int = 0  # Bitfield: each bit = one melody collected
@@ -340,6 +358,23 @@ class EmulatorBridge:
             inv_29=data.get("inv_29", 0),
             inv_30=data.get("inv_30", 0),
             inv_31=data.get("inv_31", 0),
+            # PSI abilities
+            psi_0=data.get("psi_0", 0),
+            psi_1=data.get("psi_1", 0),
+            psi_2=data.get("psi_2", 0),
+            psi_3=data.get("psi_3", 0),
+            psi_4=data.get("psi_4", 0),
+            psi_5=data.get("psi_5", 0),
+            psi_6=data.get("psi_6", 0),
+            psi_7=data.get("psi_7", 0),
+            psi_8=data.get("psi_8", 0),
+            psi_9=data.get("psi_9", 0),
+            psi_10=data.get("psi_10", 0),
+            psi_11=data.get("psi_11", 0),
+            psi_12=data.get("psi_12", 0),
+            psi_13=data.get("psi_13", 0),
+            psi_14=data.get("psi_14", 0),
+            psi_15=data.get("psi_15", 0),
             # Economy / progress
             money=data.get("money", 0),
             melodies=data.get("melodies", 0),
