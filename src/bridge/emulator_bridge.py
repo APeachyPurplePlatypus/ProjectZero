@@ -266,8 +266,31 @@ class EmulatorBridge:
                 self._process.kill()
         self._cleanup_ipc_files()
 
+    def attach(self, timeout: float = 5.0) -> None:
+        """Attach to an already-running FCEUX by checking for IPC files.
+
+        Use this when another process (e.g. start_game.py) owns the FCEUX
+        process and this bridge just needs to read/write IPC files.
+        """
+        self._attached = True
+        start = time.monotonic()
+        while time.monotonic() - start < timeout:
+            if self._ready_file.exists() and self._state_file.exists():
+                return
+            time.sleep(0.1)
+        raise BridgeTimeoutError(
+            f"No running FCEUX detected (no IPC files in {self._shared_dir}) "
+            f"within {timeout}s. Start the game first with scripts/start_game.py."
+        )
+
     def is_alive(self) -> bool:
-        """Check if FCEUX process is still running."""
+        """Check if FCEUX is accessible.
+
+        When we own the process, checks the subprocess. In attach mode,
+        checks whether state.json is still being updated.
+        """
+        if getattr(self, "_attached", False):
+            return self._state_file.exists()
         return self._process is not None and self._process.poll() is None
 
     # -- State Reading --------------------------------------------------------

@@ -128,6 +128,14 @@ async def app_lifespan(app: FastMCP):
         force_interval=config["gameplay"].get("screenshot_policy_interval", 20),
     )
 
+    # Auto-attach to an already-running FCEUX if we didn't start it
+    if not bridge.is_alive():
+        try:
+            bridge.attach(timeout=5.0)
+            logger.info("Attached to running FCEUX via IPC files.")
+        except Exception:
+            logger.warning("No running FCEUX found. Tools will fail until emulator starts.")
+
     ctx_data: dict[str, Any] = {
         "bridge": bridge,
         "parser": parser,
@@ -325,8 +333,8 @@ async def execute_action(
     # Performance tracking
     tracker: PerformanceTracker = lc["performance"]
 
-    # Death detection with context for post-mortem analysis
-    if result_state.player.hp == 0:
+    # Death detection with context for post-mortem analysis (deduplicated)
+    if tracker.should_record_death(result_state.player.hp):
         auto_cp.check_game_over(0)
         death_ctx = DeathContext(
             enemy_group_id=raw.enemy_group_id,
@@ -482,7 +490,7 @@ async def get_memory_value(
     field_name, byte_len = KNOWN_ADDRESSES[addr]
     try:
         raw = bridge.get_state()
-        value: int = getattr(raw, field_name, 0)
+        value: int = max(getattr(raw, field_name, 0), 0)
         num_bytes = max(byte_len, length)
         raw_bytes = value.to_bytes(num_bytes, byteorder="little")
         return MemoryValueResult(

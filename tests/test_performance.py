@@ -245,3 +245,63 @@ class TestDeathAnalysis:
             tracker.record_death_with_context(_make_death(enemy_name=f"Enemy{i}"))
         analysis = tracker.get_death_analysis()
         assert len(analysis["recent_deaths"]) == 5
+
+
+# ---------------------------------------------------------------------------
+# Game mode transitions
+# ---------------------------------------------------------------------------
+
+class TestGameModeTransitions:
+    def test_overworld_to_battle_returns_none(self):
+        tracker = PerformanceTracker()
+        tracker.update_game_mode("overworld")
+        assert tracker.update_game_mode("battle") is None
+
+    def test_battle_to_overworld_returns_ended(self):
+        tracker = PerformanceTracker()
+        tracker.update_game_mode("battle")
+        assert tracker.update_game_mode("overworld") == "ended"
+
+    def test_battle_to_battle_returns_none(self):
+        tracker = PerformanceTracker()
+        tracker.update_game_mode("battle")
+        assert tracker.update_game_mode("battle") is None
+
+    def test_overworld_to_overworld_returns_none(self):
+        tracker = PerformanceTracker()
+        tracker.update_game_mode("overworld")
+        assert tracker.update_game_mode("overworld") is None
+
+    def test_multi_transition_sequence(self):
+        tracker = PerformanceTracker()
+        assert tracker.update_game_mode("battle") is None  # overworld→battle
+        assert tracker.update_game_mode("overworld") == "ended"
+        assert tracker.update_game_mode("battle") is None
+        assert tracker.update_game_mode("overworld") == "ended"
+        # Two "ended" transitions total
+
+
+# ---------------------------------------------------------------------------
+# Death deduplication (Bug 2 regression)
+# ---------------------------------------------------------------------------
+
+class TestDeathDeduplication:
+    def test_should_record_death_on_first_zero(self):
+        tracker = PerformanceTracker()
+        assert tracker.should_record_death(0) is True
+
+    def test_should_not_record_death_on_repeated_zero(self):
+        tracker = PerformanceTracker()
+        tracker.should_record_death(0)  # First zero
+        assert tracker.should_record_death(0) is False
+
+    def test_should_record_death_after_recovery(self):
+        tracker = PerformanceTracker()
+        tracker.should_record_death(0)  # Die
+        tracker.should_record_death(68)  # Recover
+        assert tracker.should_record_death(0) is True  # Die again
+
+    def test_should_not_record_when_alive(self):
+        tracker = PerformanceTracker()
+        assert tracker.should_record_death(68) is False
+        assert tracker.should_record_death(50) is False
