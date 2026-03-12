@@ -128,6 +128,14 @@ async def app_lifespan(app: FastMCP):
         force_interval=config["gameplay"].get("screenshot_policy_interval", 20),
     )
 
+    # Auto-attach to an already-running FCEUX if we didn't start it
+    if not bridge.is_alive():
+        try:
+            bridge.attach(timeout=5.0)
+            logger.info("Attached to running FCEUX via IPC files.")
+        except Exception:
+            logger.warning("No running FCEUX found. Tools will fail until emulator starts.")
+
     ctx_data: dict[str, Any] = {
         "bridge": bridge,
         "parser": parser,

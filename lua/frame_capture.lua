@@ -16,6 +16,7 @@ function M.process()
     if not M.capture_requested then return end
 
     local path = SHARED_DIR .. "/" .. SCREENSHOT_FILE
+    print("[EB0] Saving screenshot to " .. path)
     -- gui.savescreenshotas() saves the current emulated frame as PNG
     gui.savescreenshotas(path)
     M.capture_requested = false

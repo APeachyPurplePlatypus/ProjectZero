@@ -47,9 +47,13 @@ end
 
 write_ready_marker()
 emu.message("EB0 AI Bridge: Lua initialized")
+print("[EB0] Lua bridge initialized. Shared dir: " .. SHARED_DIR)
+print("[EB0] Listening for commands...")
 
 -- Main per-frame loop
 while true do
+    local frame = emu.framecount()
+
     -- 1. Export game state (throttled to every 4 frames internally)
     state_exporter.export_state()
 
@@ -62,10 +66,19 @@ while true do
         input_reader.screenshot_pending = false
         -- Force a state export on screenshot frame for synchronization
         state_exporter.force_next = true
+        print("[EB0] Screenshot captured at frame " .. frame)
     end
 
     -- 4. Handle screenshot capture
     frame_capture.process()
+
+    -- 5. Heartbeat log every 300 frames (~5 seconds)
+    if frame % 300 == 0 then
+        print(string.format("[EB0] frame=%d map=%d hp=%d",
+            frame,
+            memory.readbyte(0x0015),
+            memory.readword(0x7454)))
+    end
 
     -- Advance one emulated frame
     emu.frameadvance()

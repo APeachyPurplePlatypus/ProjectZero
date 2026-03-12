@@ -103,6 +103,13 @@ function M.process_input()
             remaining_frames = cmd.duration_frames or 2
             current_frame_id = cmd.frame_id or 0
 
+            print(string.format("[EB0] CMD: %s btn=%s dir=%s frames=%d id=%d",
+                cmd.command or "?",
+                tostring(cmd.button),
+                tostring(cmd.direction),
+                cmd.duration_frames or 0,
+                cmd.frame_id or 0))
+
             -- Check for screenshot request
             if cmd.capture_screenshot then
                 M.screenshot_pending = true
@@ -120,6 +127,7 @@ function M.process_input()
 
         remaining_frames = remaining_frames - 1
         if remaining_frames <= 0 then
+            print("[EB0] CMD done: frame_id=" .. current_frame_id)
             write_done(current_frame_id)
             active_command = nil
         end
